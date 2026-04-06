@@ -239,6 +239,10 @@
 
             var rawStart = prop.keyValue(k1);
             var rawEnd   = prop.keyValue(k2);
+
+            // Skip zero-change pairs (pauses): start and end value are the same.
+            // These produce "X stays at Y" rows in the viewer — not useful in a spec.
+            if (isZeroChange(rawStart, rawEnd)) continue;
             var easing   = springData
                 ? buildSpringEasing(springData, name, scale)
                 : extractCurveEasing(prop, k1, k2);
@@ -722,6 +726,17 @@
 
 
     // ─── Numeric helpers ───────────────────────────────────────────────────────
+
+    /** Returns true if start and end values are effectively identical (a pause, not an animation). */
+    function isZeroChange(rawStart, rawEnd) {
+        if (rawStart instanceof Array) {
+            for (var i = 0; i < rawStart.length; i++) {
+                if (Math.abs(rawEnd[i] - rawStart[i]) > 0.001) return false;
+            }
+            return true;
+        }
+        return Math.abs(rawEnd - rawStart) < 0.001;
+    }
 
     function r2(val) { return Math.round(val * 100)  / 100; }
     function r3(val) { return Math.round(val * 1000) / 1000; }
