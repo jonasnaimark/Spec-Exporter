@@ -193,54 +193,58 @@
     // ─── Extract animation entries ─────────────────────────────────────────────
 
     function extractEntries(layer, prop, selectedKeys, scale, fts, compStart) {
-        var k1 = selectedKeys[0];
-        var k2 = selectedKeys[selectedKeys.length - 1];
-
-        var startTime = prop.keyTime(k1);
-        var endTime   = prop.keyTime(k2);
-        var delay     = Math.round((startTime - compStart) * 1000); // relative to work area start
-        var duration  = Math.round((endTime - startTime) * 1000);
-
-        if (duration <= 0) return [];
-
-        var rawStart = prop.keyValue(k1);
-        var rawEnd   = prop.keyValue(k2);
-        var name     = prop.name;
-
-        var springData = findSpringData(layer, startTime, prop.matchName);
-        var easing     = springData
-            ? buildSpringEasing(springData, name, scale)
-            : extractCurveEasing(prop, k1, k2);
-
+        var name    = prop.name;
         var results = [];
 
-        if (rawStart instanceof Array) {
-            // Compound array property (Position, Scale, Anchor Point, etc.)
-            var applyScale = !!PIXEL_PROPS[name];
-            var svArr = [], evArr = [];
-            for (var d = 0; d < Math.min(rawStart.length, 2); d++) {
-                var sv = rawStart[d], ev = rawEnd[d];
-                if (applyScale) { sv = sv / scale; ev = ev / scale; }
-                svArr.push(sv);
-                evArr.push(ev);
-            }
-            results.push(makeEntry(
-                name, delay, duration, easing,
-                svArr, evArr,
-                { isSpring: !!springData, fts: fts }
-            ));
+        // Loop over consecutive keyframe pairs: k[0]→k[1], k[1]→k[2], …
+        // Two selected keyframes = one iteration = same as the old first/last pair behaviour.
+        for (var s = 0; s < selectedKeys.length - 1; s++) {
+            var k1 = selectedKeys[s];
+            var k2 = selectedKeys[s + 1];
 
-        } else {
-            // Scalar property
-            var sv = rawStart, ev = rawEnd;
-            if (PIXEL_PROPS[name]) { sv = sv / scale; ev = ev / scale; }
-            // Derive dimension from property name for standalone X/Y Position
-            var dim = dimFromName(name);
-            results.push(makeEntry(
-                name, delay, duration, easing,
-                sv, ev,
-                { dimension: dim, isSpring: !!springData, fts: fts }
-            ));
+            var startTime = prop.keyTime(k1);
+            var endTime   = prop.keyTime(k2);
+            var delay     = Math.round((startTime - compStart) * 1000); // relative to work area start
+            var duration  = Math.round((endTime - startTime) * 1000);
+
+            if (duration <= 0) continue;
+
+            var rawStart = prop.keyValue(k1);
+            var rawEnd   = prop.keyValue(k2);
+
+            var springData = findSpringData(layer, startTime, prop.matchName);
+            var easing     = springData
+                ? buildSpringEasing(springData, name, scale)
+                : extractCurveEasing(prop, k1, k2);
+
+            if (rawStart instanceof Array) {
+                // Compound array property (Position, Scale, Anchor Point, etc.)
+                var applyScale = !!PIXEL_PROPS[name];
+                var svArr = [], evArr = [];
+                for (var d = 0; d < Math.min(rawStart.length, 2); d++) {
+                    var sv = rawStart[d], ev = rawEnd[d];
+                    if (applyScale) { sv = sv / scale; ev = ev / scale; }
+                    svArr.push(sv);
+                    evArr.push(ev);
+                }
+                results.push(makeEntry(
+                    name, delay, duration, easing,
+                    svArr, evArr,
+                    { isSpring: !!springData, fts: fts }
+                ));
+
+            } else {
+                // Scalar property
+                var sv = rawStart, ev = rawEnd;
+                if (PIXEL_PROPS[name]) { sv = sv / scale; ev = ev / scale; }
+                // Derive dimension from property name for standalone X/Y Position
+                var dim = dimFromName(name);
+                results.push(makeEntry(
+                    name, delay, duration, easing,
+                    sv, ev,
+                    { dimension: dim, isSpring: !!springData, fts: fts }
+                ));
+            }
         }
 
         return results;

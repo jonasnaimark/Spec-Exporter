@@ -22,8 +22,10 @@ It is **not** a Lottie exporter, not a full animation exporter, and not tied to 
 ### Works on selected keyframes, not selected layers
 The unit of work is keyframe selection in the timeline — not layer selection in the comp panel. This mirrors how InspectorSpacetime works and matches the designer workflow: you pick exactly the keyframes that matter for the spec, nothing more.
 
-### Keyframe pairs only (for now)
-Each animated property exports as a single start→end transition using the first and last selected keyframe. Multi-keyframe sequences (e.g. scale up then scale down) are a planned future addition but not in scope yet.
+### Multi-keyframe sequences supported
+Each animated property exports one animation entry per consecutive keyframe pair. With 3 selected keyframes on Scale you get two entries: k1→k2 then k2→k3. Each segment has its own timing, easing, and spring marker lookup (spring lookup uses the segment's own start time). The viewer renders these as separate rows — one per segment — matching how multi-step animations (scale up then spring down, slide left then pause then slide right) are already manually spec'd in Spectrum.
+
+Two selected keyframes = one pair = one entry, identical to the old behaviour.
 
 ### Scale factor divides pixel values to logical (1x) pixels
 The dropdown (1x–6x, default 2x) represents the resolution of the AE comp. Pixel values are **divided** by this factor to output logical 1x pixel values. The assumption is: the designer is working in a native-resolution AE comp and wants the spec to show logical pixel values for engineers.
@@ -211,7 +213,7 @@ These fields appear in the reference plugin's JSON but are either viewer-authore
 
 ## Planned / Not Yet Built
 
-- **Multi-keyframe sequences** — export a property's full selected keyframe sequence, not just first/last pair. E.g. a bounce: 0 → 100 → 80 → 90. Data shape TBD once we have examples.
+- **Multi-keyframe sequences** — implemented. Each consecutive pair in the selection generates its own flat animation entry.
 - **Natural language descriptions** — per-animation `description` field. Intentionally deferred to the downstream viewer. The viewer generates these from the timing/easing/value data.
 - **Hold keyframe handling** — currently outputs `{ "type": "hold" }` but Spectrum's behavior with hold keyframes is untested.
 - **Easing precision** — more accurate cubic bezier conversion by sampling the AE velocity curve rather than approximating from influence/speed.
