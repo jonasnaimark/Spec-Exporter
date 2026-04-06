@@ -195,25 +195,51 @@
     function extractEntries(layer, prop, selectedKeys, scale, fts, compStart) {
         var name    = prop.name;
         var results = [];
+        var s = 0;
 
-        // Loop over consecutive keyframe pairs: k[0]→k[1], k[1]→k[2], …
-        // Two selected keyframes = one iteration = same as the old first/last pair behaviour.
-        for (var s = 0; s < selectedKeys.length - 1; s++) {
-            var k1 = selectedKeys[s];
-            var k2 = selectedKeys[s + 1];
-
+        while (s < selectedKeys.length - 1) {
+            var k1        = selectedKeys[s];
             var startTime = prop.keyTime(k1);
-            var endTime   = prop.keyTime(k2);
-            var delay     = Math.round((startTime - compStart) * 1000); // relative to work area start
-            var duration  = Math.round((endTime - startTime) * 1000);
 
+            // Use exact-time spring detection for boundary logic.
+            // The fuzzy second-pass in findSpringData would falsely match baked
+            // intermediate keyframes (they sit near the spring-start marker in time),
+            // so we only use it for actual parameter extraction below.
+            var springData = findSpringDataExact(layer, startTime, prop.matchName);
+
+            var k2, endTime, endIdx;
+
+            if (springData) {
+                // ── Spring segment ──────────────────────────────────────────────
+                // Find the end of this spring: last selected key before the next
+                // spring start marker, or the last selected key if none found.
+                endIdx = selectedKeys.length - 1;
+                for (var t = s + 1; t < selectedKeys.length - 1; t++) {
+                    if (findSpringDataExact(layer, prop.keyTime(selectedKeys[t]), prop.matchName)) {
+                        endIdx = t - 1;
+                        break;
+                    }
+                }
+                k2      = selectedKeys[endIdx];
+                endTime = prop.keyTime(k2);
+                s       = endIdx; // advance past all baked intermediate keyframes
+
+            } else {
+                // ── Curve segment ───────────────────────────────────────────────
+                // Single consecutive pair.
+                endIdx  = s + 1;
+                k2      = selectedKeys[endIdx];
+                endTime = prop.keyTime(k2);
+                s       = endIdx;
+            }
+
+            var delay    = Math.round((startTime - compStart) * 1000);
+            var duration = Math.round((endTime - startTime) * 1000);
             if (duration <= 0) continue;
 
             var rawStart = prop.keyValue(k1);
             var rawEnd   = prop.keyValue(k2);
-
-            var springData = findSpringData(layer, startTime, prop.matchName);
-            var easing     = springData
+            var easing   = springData
                 ? buildSpringEasing(springData, name, scale)
                 : extractCurveEasing(prop, k1, k2);
 
@@ -232,17 +258,14 @@
                     svArr, evArr,
                     { isSpring: !!springData, fts: fts }
                 ));
-
             } else {
                 // Scalar property
                 var sv = rawStart, ev = rawEnd;
                 if (PIXEL_PROPS[name]) { sv = sv / scale; ev = ev / scale; }
-                // Derive dimension from property name for standalone X/Y Position
-                var dim = dimFromName(name);
                 results.push(makeEntry(
                     name, delay, duration, easing,
                     sv, ev,
-                    { dimension: dim, isSpring: !!springData, fts: fts }
+                    { dimension: dimFromName(name), isSpring: !!springData, fts: fts }
                 ));
             }
         }
@@ -417,6 +440,25 @@
 
 
     // ─── Sproing marker reading ─────────────────────────────────────────────────
+
+    /**
+     * Strict spring-start detection: only matches a marker at exactly keyTime
+     * (within MARKER_TIME_EPSILON). Used for spring boundary detection in the
+     * extractEntries loop so intermediate baked keyframes (which sit near a
+     * spring-start marker but don't own one) are not misidentified as spring starts.
+     */
+    function findSpringDataExact(layer, keyTime, propMatchName) {
+        try {
+            var markerProp = getMarkerProp(layer);
+            if (!markerProp || markerProp.numKeys === 0) return null;
+            for (var m = 1; m <= markerProp.numKeys; m++) {
+                if (Math.abs(markerProp.keyTime(m) - keyTime) > MARKER_TIME_EPSILON) continue;
+                var block = extractBlock(markerProp.keyValue(m).comment, propMatchName);
+                if (block) return parseSpringBlock(block);
+            }
+        } catch (e) {}
+        return null;
+    }
 
     function findSpringData(layer, keyTime, propMatchName) {
         try {
