@@ -100,14 +100,15 @@
             layerIds[comp.layer(i).index] = "l_" + compTs + "_" + randomStr(8);
         }
 
-        var compStart = comp.workAreaStart; // delays are relative to work area start
-        var layers  = [];
+        var compStart   = comp.workAreaStart; // delays are relative to work area start
+        var layers      = [];
+        var skipCounter = { noChange: 0 }; // tracks zero-change pairs dropped during export
 
         for (var i = 1; i <= comp.numLayers; i++) {
             var layer      = comp.layer(i);
             var fts        = getFitToShape(layer); // null if effect not present
             var animations = [];
-            collectAnimations(layer, layer, animations, scale, fts, compStart);
+            collectAnimations(layer, layer, animations, scale, fts, compStart, skipCounter);
 
             if (animations.length > 0 || fts) {
                 var entry = {
@@ -134,6 +135,9 @@
         }
 
         if (layers.length === 0) {
+            if (skipCounter.noChange > 0) {
+                throw new Error("No change");
+            }
             throw new Error("No selected keyframe pairs found.");
         }
 
@@ -166,7 +170,7 @@
 
     // ─── Property traversal ────────────────────────────────────────────────────
 
-    function collectAnimations(layer, propGroup, animations, scale, fts, compStart) {
+    function collectAnimations(layer, propGroup, animations, scale, fts, compStart, skipCounter) {
         var n;
         try { n = propGroup.numProperties; } catch (e) { return; }
 
@@ -179,11 +183,11 @@
                 if (prop.propertyType === PropertyType.PROPERTY) {
                     var sel = prop.selectedKeys;
                     if (sel && sel.length >= 2) {
-                        var entries = extractEntries(layer, prop, sel, scale, fts, compStart);
+                        var entries = extractEntries(layer, prop, sel, scale, fts, compStart, skipCounter);
                         for (var j = 0; j < entries.length; j++) animations.push(entries[j]);
                     }
                 } else {
-                    collectAnimations(layer, prop, animations, scale, fts, compStart);
+                    collectAnimations(layer, prop, animations, scale, fts, compStart, skipCounter);
                 }
             } catch (e) {}
         }
@@ -192,7 +196,7 @@
 
     // ─── Extract animation entries ─────────────────────────────────────────────
 
-    function extractEntries(layer, prop, selectedKeys, scale, fts, compStart) {
+    function extractEntries(layer, prop, selectedKeys, scale, fts, compStart, skipCounter) {
         var name    = prop.name;
         var results = [];
         var s = 0;
@@ -242,7 +246,7 @@
 
             // Skip zero-change pairs (pauses): start and end value are the same.
             // These produce "X stays at Y" rows in the viewer — not useful in a spec.
-            if (isZeroChange(rawStart, rawEnd)) continue;
+            if (isZeroChange(rawStart, rawEnd)) { if (skipCounter) skipCounter.noChange++; continue; }
             var easing   = springData
                 ? buildSpringEasing(springData, name, scale)
                 : extractCurveEasing(prop, k1, k2);
